@@ -81,6 +81,105 @@ describe('ReactTestUtils', () => {
     expect(scryResults.length).toBe(1);
   });
 
+  it('can not handle stateless HOCs such as forwardRef', () => {
+    // This is the underlying "Button" class - it gets wrapped before being exported to the end developer
+    class Button extends React.Component {
+      render() {
+        return <button></button>;
+      }
+    }
+
+    // Here the "Button" is wrapped in an HOC of some kind - we use ref for an easy example; I think its valid to use this as an example with 80% confidence
+    // Remember if your internal component that you think you are interfacing with is wrapped then that is what is being exported to you as an end developer
+    // So you would import the ForwardRefChild value, not the original component
+    let ForwardRefChild = React.forwardRef(() => <Button />);
+
+    const renderedComponent = ReactTestUtils.renderIntoDocument(<ForwardRefChild />);
+
+    // Now when you look for the exported value type and you can't find it because: https://github.com/facebook/react/issues/13455#issuecomment-415088578
+    const scryResults = ReactTestUtils.scryRenderedComponentsWithType(
+      renderedComponent,
+      ForwardRefChild,
+    );
+    expect(scryResults.length).toBe(1);
+  });
+
+  it('can not handle stateless HOCs such as Reverse', () => {
+    // This is the underlying "Button" class - it gets wrapped before being exported to the end developer
+    const Button = (props) => <button>{props.children}</button>
+
+    // Here the Button is wrapped in an HOC of some kind
+    // Remember if your internal component that you think you are interfacing with is wrapped then that is what is being exported to you as an end developer
+    // So you would import the ExportedComponent value, not the original component "Button"
+    const Reverse = (PassedComponent) =>
+                    ({ children, ...props }) =>
+                      <PassedComponent {...props}>
+                        {children.split("").reverse().join("")}
+                      </PassedComponent>;
+
+    const ReversedButton = Reverse(Button)
+    const ExportedComponent = ReversedButton;
+
+    const renderedComponent = ReactTestUtils.renderIntoDocument(<ExportedComponent>Gedalia</ExportedComponent>);
+
+     // Now when you look for the exported value type and you can't find it because: https://github.com/facebook/react/issues/13455#issuecomment-415088578
+    const scryResults = ReactTestUtils.scryRenderedComponentsWithType(
+      renderedComponent,
+      ExportedComponent,
+    );
+    expect(scryResults.length).toBe(1);
+  });
+
+  it('can handle stateful HOC types', () => {
+    // This is the underlying "Button" class - it gets wrapped before being exported to the end developer
+    const Button = (props) => <button>{props.children}</button>
+
+    // Here the Button is wrapped in an HOC of some kind
+    // Remember if your internal component that you think you are interfacing with is wrapped then that is what is being exported to you as an end developer
+    // So you would import the ForwardRefChild value, not the original component
+    const isEmpty = prop =>
+      prop === null ||
+      prop === undefined ||
+      (prop.hasOwnProperty("length") && prop.length === 0) ||
+      (prop.constructor === Object && Object.keys(prop).length === 0);
+
+    const Loading = loadingProp => WrappedComponent => {
+      return class LoadingHOC extends React.Component {
+        componentDidMount() {
+          this.startTimer = Date.now();
+        }
+
+        componentDidUpdate(nextProps) {
+          if (!isEmpty(nextProps[loadingProp])) {
+            this.endTimer = Date.now();
+          }
+        }
+
+        render() {
+          const myProps = {
+            loadingTime: ((this.endTimer - this.startTimer) / 1000).toFixed(2)
+          };
+
+          return isEmpty(this.props[loadingProp]) ? (
+            <div className="loader" />
+          ) : (
+            <WrappedComponent {...this.props} {...myProps} />
+          );
+        }
+      };
+    };
+
+    const ExportedComponent = Loading("name")(Button)
+    const renderedComponent = ReactTestUtils.renderIntoDocument(<ExportedComponent>Gedalia</ExportedComponent>);
+
+     // Now when you look for the exported value type and you CAN find it because (the same line of reasoning): https://github.com/facebook/react/issues/13455#issuecomment-415088578
+    const scryResults = ReactTestUtils.scryRenderedComponentsWithType(
+      renderedComponent,
+      ExportedComponent,
+    );
+    expect(scryResults.length).toBe(1);
+  });
+
   it('can scryRenderedDOMComponentsWithClass with TextComponent', () => {
     class Wrapper extends React.Component {
       render() {
