@@ -85,54 +85,172 @@ describe('ReactTestUtils', () => {
     // This is the underlying "Button" class - it gets wrapped before being exported to the end developer
     class Button extends React.Component {
       render() {
-        return <button></button>;
+        return <button>Gedalia</button>;
       }
     }
 
     // Here the "Button" is wrapped in an HOC of some kind - we use ref for an easy example; I think its valid to use this as an example with 80% confidence
     // Remember if your internal component that you think you are interfacing with is wrapped then that is what is being exported to you as an end developer
     // So you would import the ForwardRefChild value, not the original component
-    let ForwardRefChild = React.forwardRef(() => <Button />);
+    const ForwardRefChild = React.forwardRef(() => <Button />);
 
-    const renderedComponent = ReactTestUtils.renderIntoDocument(<ForwardRefChild />);
+    // Wrapping it in one more useless layer of class components to make sure we can get a real component instance returned from renderIntoDocument; when renderedComponent is null, none of this matters
+    class Wrapper extends React.Component {
+      render() {
+        return <ForwardRefChild />;
+      }
+    }
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const renderedComponent = ReactDOM.render(<Wrapper />, container);
+    expect(
+      ReactTestUtils.isCompositeComponentWithType(renderedComponent, Wrapper),
+    ).toBe(true);
 
     // Now when you look for the exported value type and you can't find it because: https://github.com/facebook/react/issues/13455#issuecomment-415088578
+    // There is no "react fiber" that has been created to maintain the existence of the wrapping HOC; after all, its not really the thing getting rendered that requires a fiber to exist for
     const scryResults = ReactTestUtils.scryRenderedComponentsWithType(
       renderedComponent,
       ForwardRefChild,
     );
-    expect(scryResults.length).toBe(1);
+    expect(scryResults.length).toBe(0);
+
+    // You can find the underlying stateful components though or DOM elements rendered by stateless components
+    const scryStatefulResults = ReactTestUtils.scryRenderedComponentsWithType(
+      renderedComponent,
+      Button,
+    );
+    expect(scryStatefulResults.length).toBe(1);
+
+    const domButton = ReactTestUtils.findRenderedDOMComponentWithTag(
+      renderedComponent,
+      'button',
+    );
+    expect(ReactTestUtils.isDOMComponent(domButton)).toBe(true);
+    expect(domButton.textContent).toBe('Gedalia');
+
+    // BUT you usually don't have access to the underlying tag or class
+    // You can:
+    //  1. Inspect the DOM and see if you can use the mind + trial and error to find the actual underlying element you need. I would not recommend since you are using implementation details (e.g. native DOM elements used) that can definitely be changed.
+    //  2. Read the code of the dependency to accomplish the same if the underlying components are exposed or have dom elements to find
+    //  3. Not test anything about the dependency in the first place (maybe mock), BUT that doesn't work if that component is needed ultimately for whatever crazy reason (e.g. Stripe components are needed to fill in the credit card form correctly)
+
+    // For example, if I print out the DOM after rendering (using the document DOM API):
+
+    // get a look at the whole thing with this:
+    // expect(document.body.children).toEqual([<div><button /></div>]);
+
+    expect(document.body.children[0].tagName.toLowerCase()).toBe('div');
+    expect(document.body.children[0].children[0].tagName.toLowerCase()).toBe(
+      'button',
+    );
+
+    // we can see the actual dom elements that have been rendered into the DOM and we can now search for those actual elements to navigate the component in tests (if we even should ever do that)
+
+    // cleanup
+    ReactDOM.unmountComponentAtNode(container);
+    document.body.removeChild(container);
   });
 
   it('can not handle stateless HOCs such as Reverse', () => {
     // This is the underlying "Button" class - it gets wrapped before being exported to the end developer
-    const Button = (props) => <button>{props.children}</button>
+    class Button extends React.Component {
+      render() {
+        return <button>{this.props.children}</button>;
+      }
+    }
 
     // Here the Button is wrapped in an HOC of some kind
     // Remember if your internal component that you think you are interfacing with is wrapped then that is what is being exported to you as an end developer
     // So you would import the ExportedComponent value, not the original component "Button"
-    const Reverse = (PassedComponent) =>
-                    ({ children, ...props }) =>
-                      <PassedComponent {...props}>
-                        {children.split("").reverse().join("")}
-                      </PassedComponent>;
+    const Reverse = PassedComponent => ({children, ...props}) => (
+      <PassedComponent {...props}>
+        {children
+          .split('')
+          .reverse()
+          .join('')}
+      </PassedComponent>
+    );
 
-    const ReversedButton = Reverse(Button)
+    const ReversedButton = Reverse(Button);
     const ExportedComponent = ReversedButton;
 
-    const renderedComponent = ReactTestUtils.renderIntoDocument(<ExportedComponent>Gedalia</ExportedComponent>);
+    // Wrapping it in one more useless layer of class components to make sure we can get a real component instance returned from renderIntoDocument; when renderedComponent is null, none of this matters
+    class Wrapper extends React.Component {
+      render() {
+        return <ExportedComponent>Gedalia</ExportedComponent>;
+      }
+    }
 
-     // Now when you look for the exported value type and you can't find it because: https://github.com/facebook/react/issues/13455#issuecomment-415088578
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const renderedComponent = ReactDOM.render(<Wrapper />, container);
+    expect(
+      ReactTestUtils.isCompositeComponentWithType(renderedComponent, Wrapper),
+    ).toBe(true);
+
+    // Now when you look for the exported value type and you can't find it because: https://github.com/facebook/react/issues/13455#issuecomment-415088578
     const scryResults = ReactTestUtils.scryRenderedComponentsWithType(
       renderedComponent,
       ExportedComponent,
     );
-    expect(scryResults.length).toBe(1);
+    expect(scryResults.length).toBe(0);
+
+    // Even looking for the Reverse HOC type won't work
+    const scryReverseHOCResults = ReactTestUtils.scryRenderedComponentsWithType(
+      renderedComponent,
+      Reverse,
+    );
+    expect(scryReverseHOCResults.length).toBe(0);
+
+    // You can find the underlying stateful components though or DOM elements rendered by stateless components
+    const scryStatefulResults = ReactTestUtils.scryRenderedComponentsWithType(
+      renderedComponent,
+      Button,
+    );
+    expect(scryStatefulResults.length).toBe(1);
+
+    const domButton = ReactTestUtils.findRenderedDOMComponentWithTag(
+      renderedComponent,
+      'button',
+    );
+    expect(ReactTestUtils.isDOMComponent(domButton)).toBe(true);
+    expect(domButton.textContent).toBe('ailadeG');
+
+    // BUT you usually don't have access to the underlying tag or class
+    // You can:
+    //  1. Inspect the DOM and see if you can use the mind + trial and error to find the actual underlying element you need. I would not recommend since you are using implementation details that can definitely be changed.
+    //  2. Read the code of the dependency to accomplish the same if the underlying components are exposed or have dom elements to find
+    //  3. Not test anything about the dependency in the first place (maybe mock), BUT that doesn't work if that component is needed ultimately for whatever crazy reason (e.g. Stripe components are needed to fill in the credit card form correctly)
+
+    // For example, if I print out the DOM after rendering (using the document DOM API):
+
+    // get a look at the whole thing with this:
+    // expect(document.body.children).toEqual([<div><button /></div>]);
+
+    expect(document.body.children[0].tagName.toLowerCase()).toBe('div');
+    expect(document.body.children[0].children[0].tagName.toLowerCase()).toBe(
+      'button',
+    );
+    expect(document.body.children[0].children[0].textContent).toBe('ailadeG');
+
+    // we can see the actual dom elements that have been rendered into the DOM and we can now search for those actual elements to navigate the component in tests (if we even should ever do that)
+
+    // cleanup
+    ReactDOM.unmountComponentAtNode(container);
+    document.body.removeChild(container);
   });
 
   it('can handle stateful HOC types', () => {
     // This is the underlying "Button" class - it gets wrapped before being exported to the end developer
-    const Button = (props) => <button>{props.children}</button>
+    class Button extends React.Component {
+      render() {
+        return <button>{this.props.children}</button>;
+      }
+    }
 
     // Here the Button is wrapped in an HOC of some kind
     // Remember if your internal component that you think you are interfacing with is wrapped then that is what is being exported to you as an end developer
@@ -140,7 +258,7 @@ describe('ReactTestUtils', () => {
     const isEmpty = prop =>
       prop === null ||
       prop === undefined ||
-      (prop.hasOwnProperty("length") && prop.length === 0) ||
+      (prop.hasOwnProperty('length') && prop.length === 0) ||
       (prop.constructor === Object && Object.keys(prop).length === 0);
 
     const Loading = loadingProp => WrappedComponent => {
@@ -157,7 +275,7 @@ describe('ReactTestUtils', () => {
 
         render() {
           const myProps = {
-            loadingTime: ((this.endTimer - this.startTimer) / 1000).toFixed(2)
+            loadingTime: ((this.endTimer - this.startTimer) / 1000).toFixed(2),
           };
 
           return isEmpty(this.props[loadingProp]) ? (
@@ -169,10 +287,12 @@ describe('ReactTestUtils', () => {
       };
     };
 
-    const ExportedComponent = Loading("name")(Button)
-    const renderedComponent = ReactTestUtils.renderIntoDocument(<ExportedComponent>Gedalia</ExportedComponent>);
+    const ExportedComponent = Loading('name')(Button);
+    const renderedComponent = ReactTestUtils.renderIntoDocument(
+      <ExportedComponent>Gedalia</ExportedComponent>,
+    );
 
-     // Now when you look for the exported value type and you CAN find it because (the same line of reasoning): https://github.com/facebook/react/issues/13455#issuecomment-415088578
+    // Now when you look for the exported value type and you CAN find it because (the same line of reasoning): https://github.com/facebook/react/issues/13455#issuecomment-415088578
     const scryResults = ReactTestUtils.scryRenderedComponentsWithType(
       renderedComponent,
       ExportedComponent,
