@@ -254,7 +254,7 @@ describe('ReactTestUtils', () => {
 
     // Here the Button is wrapped in an HOC of some kind
     // Remember if your internal component that you think you are interfacing with is wrapped then that is what is being exported to you as an end developer
-    // So you would import the ForwardRefChild value, not the original component
+    // So you would import the ExportedComponent value, not the original component "Button"
     const isEmpty = prop =>
       prop === null ||
       prop === undefined ||
